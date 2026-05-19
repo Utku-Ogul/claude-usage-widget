@@ -34,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Export history as CSV or JSON to stdout.")
     p.add_argument("--days", type=int, default=30,
                    help="Look-back window for --export (default: 30).")
+    p.add_argument("--detach", "-d", action="store_true",
+                   help="Run the GUI in the background and return the shell "
+                        "prompt; logs go to ~/.cache/claude-usage/widget.log.")
     return p
 
 
@@ -111,6 +114,57 @@ def run_cli(argv: Sequence[str]) -> int:
     return -1
 
 
+def _detach_into_background() -> None:
+    """Double-fork so the launching shell gets its prompt back immediately.
+
+    Standard Unix daemon pattern: fork → first child setsid()s into a new
+    session, forks again → grandchild is fully detached from controlling
+    terminal and process group, so a shell exit / SIGHUP can't kill it.
+    stdio is rebound to /dev/null + a log file under XDG_CACHE_HOME so
+    later debugging is still possible.
+
+    Windows has no fork; users there should run the EXE detached via
+    Start-Process or pythonw — we print a hint and continue in foreground.
+    """
+    if sys.platform == "win32":
+        print(
+            "claude-usage: --detach is not supported on Windows; "
+            "use Start-Process or pythonw to background instead.",
+            file=sys.stderr,
+        )
+        return
+
+    # First fork — parent returns to the shell prompt.
+    if os.fork() > 0:
+        os._exit(0)
+    # New session, no controlling terminal.
+    os.setsid()
+    # Second fork — grandchild can never re-acquire a controlling tty.
+    if os.fork() > 0:
+        os._exit(0)
+
+    # Route stdio to a persistent log so the user can `tail` it if the
+    # widget misbehaves. Append-mode keeps prior runs around.
+    cache_dir = os.path.join(
+        os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+        "claude-usage",
+    )
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError:
+        cache_dir = "/tmp"
+    log_path = os.path.join(cache_dir, "widget.log")
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    with open(os.devnull, "r") as null_in:
+        os.dup2(null_in.fileno(), 0)
+    log_fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    os.dup2(log_fd, 1)
+    os.dup2(log_fd, 2)
+    os.close(log_fd)
+
+
 def _print_qt_install_hint(exc: Exception) -> None:
     """Print install instructions for Qt's xcb platform plugin runtime deps."""
     print(
@@ -171,11 +225,22 @@ def main() -> int:
         )
         return 1
 
+    # Peek at --detach BEFORE run_cli runs — if the user only wants the
+    # GUI in the background, we want to fork before any heavy imports
+    # (Qt, collector). run_cli would consume the flag and return -1
+    # anyway, but forking earlier means a faster shell-prompt return.
+    args = build_parser().parse_args(sys.argv[1:])
+    if args.detach and not (args.version or args.json or args.once or
+                            args.field or args.export):
+        _detach_into_background()
+        _launch_gui()
+        return 0
+
     rc = run_cli(sys.argv[1:])
     if rc >= 0:
         return rc
 
-    # No CLI flag — fall through to the GUI.
+    # No CLI flag — fall through to the GUI in the foreground.
     _launch_gui()
     return 0
 

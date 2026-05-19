@@ -125,8 +125,9 @@ Gauge variants for every theme are available at `screenshots/osd-gauge-<theme>.p
 
 ```bash
 pip install --user --upgrade claude-usage-widget
-claude-usage              # launches the OSD overlay
-claude-usage --version    # 0.6.6
+claude-usage              # launches the OSD overlay (foreground)
+claude-usage --detach     # …or run it in the background and free the shell
+claude-usage --version    # 0.6.7
 ```
 
 That's it — no `apt`, no `brew`, no PyGObject, no rumps. PySide6 ships Qt in the wheel, so the widget is fully self-contained.
