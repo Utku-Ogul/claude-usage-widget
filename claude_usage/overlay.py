@@ -46,7 +46,6 @@ BASE_WIDTH = 260
 BASE_HEIGHT = 100
 TICKER_STRIP_HEIGHT = 22
 NEWS_STRIP_HEIGHT = 16  # second ticker row for latest headline
-NEWS_REFRESH_MS = 10 * 60 * 1000  # 10 minutes
 # Gauge view is slightly taller than bars because the rings + label + reset
 # stack vertically inside each column. No ticker in this view (it would
 # collide with the reset line under each ring).
@@ -188,7 +187,11 @@ class UsageOverlay(QWidget):
         # User toggle — default on, overridable via config; runtime flip
         # lives in the right-click menu.
         self._ticker_enabled: bool = bool(cfg.get("show_ticker", True))
-        self._news_enabled: bool = bool(cfg.get("show_news", True))
+        # News strip is OPT-IN — defaults to False because it makes an
+        # outbound network call to a 3rd-party feed (hnrss.org / reddit),
+        # something a fresh install shouldn't do silently. Users opt in via
+        # the right-click menu or by setting "show_news": true in config.
+        self._news_enabled: bool = bool(cfg.get("show_news", False))
         # "bars" (default) or "gauge" — the right-click menu toggles this and
         # persists to config.
         raw_mode = str(cfg.get("osd_view_mode", VIEW_MODE_BARS))
@@ -223,12 +226,13 @@ class UsageOverlay(QWidget):
         self._ticker_timer = QTimer(self)
         self._ticker_timer.setInterval(TICKER_FRAME_INTERVAL_MS)
         self._ticker_timer.timeout.connect(self._advance_ticker)
-
-        # News strip: refresh headline every 10 min, independent of stats refresh.
-        self._news_refresh_timer = QTimer(self)
-        self._news_refresh_timer.setInterval(NEWS_REFRESH_MS)
-        self._news_refresh_timer.timeout.connect(self._refresh_headline)
-        self._news_refresh_timer.start()
+        # NB: there is NO separate news-refresh timer. The collector
+        # already fetches news_items (with 1h on-disk cache) on every
+        # stats-refresh tick, and delivers them via the existing
+        # cross-thread stats_ready Signal -> update_stats() path, which
+        # runs on the GUI thread. That is the only writer of
+        # _news_items / _latest_headline / _latest_news_url, so paintEvent
+        # never sees a torn read.
 
     # ------------------------------------------------------------------ API
 
@@ -324,19 +328,6 @@ class UsageOverlay(QWidget):
         self._ticker_offset += TICKER_SCROLL_PX_PER_SEC * (TICKER_FRAME_INTERVAL_MS / 1000.0)
         self._news_offset += TICKER_SCROLL_PX_PER_SEC * (TICKER_FRAME_INTERVAL_MS / 1000.0)
         self.update()
-
-    def _refresh_headline(self) -> None:
-        """Fetch latest news headline in a background thread."""
-        import threading
-        def _worker():
-            from claude_usage.news_fetcher import get_news_items
-            items = get_news_items(force_refresh=True)
-            if items:
-                self._news_items = items
-                self._latest_headline = items[0].title
-                self._latest_news_url = items[0].url
-                self._news_offset = 0.0
-        threading.Thread(target=_worker, daemon=True).start()
 
     def set_opacity(self, value: float) -> None:
         """Set background opacity (0.15 -- 1.0)."""

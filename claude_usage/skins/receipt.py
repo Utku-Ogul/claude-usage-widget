@@ -53,8 +53,7 @@ THEME = {
 }
 
 METRICS = {
-    "osd_width": 340, "osd_height": 166, "osd_radius": 2, "osd_padding": 16,
-    "news_bottom_pad": 29,
+    "osd_width": 340, "osd_height": 234, "osd_radius": 2, "osd_padding": 16,
     "popup_width": 540, "popup_padding": 26,
     "grain_step_px": 3, "ticker_h": 22,
 }
@@ -162,7 +161,7 @@ def paint_osd(p: QPainter, rect: QRectF, data, scale: float = 1.0) -> None:
         data.ticker_items, data.ticker_offset,
         ticker_colors, ticker_f, sep_gap_px=8 * s,
     )
-    yy = yy_base + fm_t.descent() + 6 * s + 9 * s  # gap reserved for news strip
+    yy = yy_base + fm_t.descent() + 6 * s
 
     # thank-you footer
     foot = "— THANK YOU —"

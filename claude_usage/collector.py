@@ -778,11 +778,16 @@ def collect_all(config: dict[str, Any]) -> UsageStats:
     except OSError:
         stats.active_subagent_count = 0
 
-    # Recent Anthropic news — served from 1-hour local cache; network call
-    # is non-blocking because collect_all already runs in a daemon thread.
-    try:
-        stats.news_items = get_news_items()
-    except Exception:
+    # Recent Anthropic news — only fetched when the user has explicitly
+    # opted in (config.show_news == true). Without this guard a fresh
+    # install would hit hnrss.org / reddit.com on every refresh tick even
+    # though the strip is hidden by default.
+    if config.get("show_news"):
+        try:
+            stats.news_items = get_news_items()
+        except Exception:
+            stats.news_items = []
+    else:
         stats.news_items = []
 
     # Claude-authored weekly report — we only *read* the on-disk cache here;
