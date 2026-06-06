@@ -65,6 +65,7 @@ class AppIndicatorTray:
             self._indicator.set_icon_theme_path(_ICON_DIR)
         self._indicator.set_status(AyatanaAppIndicator3.IndicatorStatus.ACTIVE)
         self._indicator.set_label("C: …", "C: 100% | W: 100%")
+        self._visible = True
 
         # GTK needs a non-empty menu to show the indicator on some DE versions.
         menu = Gtk.Menu()
@@ -93,6 +94,18 @@ class AppIndicatorTray:
         guide = "C: 100% | W: 100%"
         indicator = self._indicator
         self._GLib.idle_add(indicator.set_label, label, guide)
+
+    def set_visible(self, visible: bool) -> None:
+        """Show or hide the top-panel indicator (ACTIVE ↔ PASSIVE)."""
+        from gi.repository import AyatanaAppIndicator3
+        self._visible = visible
+        status = (AyatanaAppIndicator3.IndicatorStatus.ACTIVE
+                  if visible
+                  else AyatanaAppIndicator3.IndicatorStatus.PASSIVE)
+        self._GLib.idle_add(self._indicator.set_status, status)
+
+    def is_visible(self) -> bool:
+        return self._visible
 
     def _on_quit_clicked(self, _item) -> None:
         # Stop the GTK loop, then hand off to the app's quit callback (which
@@ -171,6 +184,7 @@ class QtSystemTray:
                 lambda reason: self._on_activated(reason, on_toggle_widget)
             )
         self._tray.show()
+        self._shown = True
 
     @staticmethod
     def _on_activated(reason, on_toggle_widget) -> None:
@@ -182,6 +196,17 @@ class QtSystemTray:
             QSystemTrayIcon.DoubleClick,
         ):
             on_toggle_widget()
+
+    def set_visible(self, visible: bool) -> None:
+        """Show or hide the system-tray icon."""
+        self._shown = visible
+        if visible:
+            self._tray.show()
+        else:
+            self._tray.hide()
+
+    def is_visible(self) -> bool:
+        return self._shown
 
     def update(self, stats: UsageStats) -> None:
         """Refresh the menu header + tooltip (already on the GUI thread)."""

@@ -1049,15 +1049,23 @@ class ClaudeUsageApp(QObject):
             on_toggle_widget=self._tray_toggle.emit,
             on_quit=self._on_quit,
         )
+        if self._tray is not None and not bool(config.get("show_panel", True)):
+            self._tray.set_visible(False)
 
         # --- Wire signals ---
         self.overlay.clicked.connect(self._on_overlay_click)
         self.overlay.rightClicked.connect(self._on_overlay_right_click)
         self.overlay.movedTo.connect(self._on_overlay_moved)
+        self.overlay.scaledTo.connect(self._on_overlay_scaled)
+        self.overlay.minimizedChanged.connect(self._on_overlay_minimized_changed)
         self.stats_ready.connect(self._apply_stats)
 
-        # Show the overlay and kick off the first refresh.
+        # Show the overlay, then restore last-session state.
         self.overlay.show()
+        if config.get("osd_minimized", False):
+            self.overlay.toggle_minimized()
+        if not config.get("osd_visible", True):
+            self.overlay.hide()
         self._refresh_async()
 
         # Periodic refresh timer (runs on the GUI thread).
@@ -1194,6 +1202,12 @@ class ClaudeUsageApp(QObject):
         self._act_news.toggled.connect(self._on_toggle_news)
         m.addAction(self._act_news)
 
+        self._act_panel = QAction("⬛  Show top panel", m)
+        self._act_panel.setCheckable(True)
+        self._act_panel.setChecked(bool(self.config.get("show_panel", True)))
+        self._act_panel.toggled.connect(self._on_toggle_panel)
+        m.addAction(self._act_panel)
+
         m.aboutToShow.connect(self._sync_menu_state)
 
         m.addSeparator()
@@ -1218,6 +1232,12 @@ class ClaudeUsageApp(QObject):
     def _on_toggle_news(self, checked: bool) -> None:
         self.overlay.set_news_enabled(checked)
         self.config["show_news"] = bool(checked)
+        self._persist_config()
+
+    def _on_toggle_panel(self, checked: bool) -> None:
+        if self._tray is not None:
+            self._tray.set_visible(checked)
+        self.config["show_panel"] = bool(checked)
         self._persist_config()
 
     def _on_pick_theme(self, name: str) -> None:
@@ -1256,6 +1276,14 @@ class ClaudeUsageApp(QObject):
         self.config["osd_position"] = "custom"
         self.config["osd_x"] = int(x)
         self.config["osd_y"] = int(y)
+        self._persist_config()
+
+    def _on_overlay_scaled(self, scale: float) -> None:
+        self.config["osd_scale"] = round(float(scale), 3)
+        self._persist_config()
+
+    def _on_overlay_minimized_changed(self, minimized: bool) -> None:
+        self.config["osd_minimized"] = bool(minimized)
         self._persist_config()
 
     def _on_pick_opacity(self, value: float, pct: int) -> None:
@@ -1435,6 +1463,10 @@ class ClaudeUsageApp(QObject):
         # Tick marks on radio-grouped items.
         self._act_ticker.setChecked(self.overlay.is_ticker_enabled())
         self._act_news.setChecked(self.overlay.is_news_enabled())
+        panel_visible = (self._tray.is_visible() if self._tray is not None
+                         else False)
+        self._act_panel.setChecked(panel_visible)
+        self._act_panel.setEnabled(self._tray is not None)
         theme_act = self._theme_actions.get(current_theme)
         if theme_act is not None:
             theme_act.setChecked(True)
@@ -1550,7 +1582,14 @@ class ClaudeUsageApp(QObject):
     # -------------------------------------------------------------- slots
 
     def _on_overlay_click(self) -> None:
-        self._show_popup()
+        if self._tray is None:
+            self._show_popup()
+            return
+        # Sol tık: üst panel göstergesini aç/kapa (toggle)
+        new_visible = not self._tray.is_visible()
+        self._tray.set_visible(new_visible)
+        self.config["show_panel"] = new_visible
+        self._persist_config()
 
     def _on_overlay_right_click(self, global_pos: QPoint) -> None:
         self._context_menu.popup(global_pos)
@@ -1621,6 +1660,10 @@ class ClaudeUsageApp(QObject):
             self.overlay.show()
 
     def _on_quit(self) -> None:
+        # Persist final overlay state before teardown.
+        self.config["osd_visible"] = bool(self.overlay.isVisible())
+        self._persist_config()
+
         self._alive = False
         self._timer.stop()
         if self._api_server is not None:

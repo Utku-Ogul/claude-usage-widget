@@ -165,6 +165,10 @@ class UsageOverlay(QWidget):
     # Emitted after a drag-to-move finishes, with the new top-left (x, y).
     # The controller persists these as the "custom" position in config.
     movedTo = Signal(int, int)
+    # Emitted when the scroll-wheel changes the scale factor.
+    scaledTo = Signal(float)
+    # Emitted when the minimized state is toggled.
+    minimizedChanged = Signal(bool)
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         super().__init__()
@@ -383,6 +387,7 @@ class UsageOverlay(QWidget):
         elif self._ticker_items and self._view_mode == VIEW_MODE_BARS:
             self._ticker_timer.start()
         self.update()
+        self.minimizedChanged.emit(self._minimized)
 
     # ------------------------------------------------------------- internals
 
@@ -523,6 +528,7 @@ class UsageOverlay(QWidget):
             self._scale = new_scale
             self._apply_size()
             self.update()
+            self.scaledTo.emit(self._scale)
 
     # ----------------------------------------------------------- painting
 

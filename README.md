@@ -93,12 +93,13 @@ Gauge variants for every theme are available at `screenshots/osd-gauge-<theme>.p
 
 - **Single `pip install`** -- no `apt`/`brew`/system libraries required, Qt is bundled
 - **Real API data** -- rate-limit utilisation read straight from `anthropic-ratelimit-unified-*` response headers
-- **OSD overlay** -- transparent, frameless, always-on-top; left-click opens the details popup, right-click shows a context menu
+- **OSD overlay** -- transparent, frameless, always-on-top; left-click toggles the top panel indicator (when available), right-click shows a context menu
 - **Live token stream** -- `● LIVE 5.3k tok/min` badge on the OSD while a Claude Code session is actively writing, derived from the conversation JSONLs
 - **Per-turn cost ticker** -- a scrolling strip at the bottom of the OSD shows the USD cost of each assistant turn as it lands (`$0.156 ← Bash · 116`), colour-coded by quartile within the visible window so the tape always stays visually varied. Toggle via right-click → "Show cost ticker" or set `"show_ticker": false` in `config.json`.
 - **Live news ticker (opt-in)** -- a second scrolling strip shows the latest Anthropic/Claude headlines sourced from Hacker News (top stories with 50+ upvotes). Fetched lazily, cached locally for 1 hour. Click the strip to open the article in your browser. **Off by default** because it makes outbound calls to a 3rd-party feed; enable via right-click → "Show news ticker" or set `"show_news": true` in `config.json`.
 - **Subagent rozet** -- when you spawn parallel subagents via the Task tool, the `CLAUDE` title gets a `⚙ N` counter next to it showing how many are currently writing. Hidden when zero so single-session use isn't cluttered.
 - **System-tray / menu-bar indicator** -- an optional tray entry shows `C: 42% | W: 71%` and a Show/Hide + Quit menu. Cross-platform: a live text label in the top bar on **Linux/GNOME** (AyatanaAppIndicator3), and a menu-bar icon on **macOS** / notification-area icon on **Windows** (Qt `QSystemTrayIcon`, no extra dependency). Auto-detected — if no tray backend is present the widget just runs without it.
+- **Top panel toggle** -- show or hide the system-tray/menu-bar indicator from two places: **left-click** on the OSD widget directly toggles the panel on/off (single tap = open, second tap = close); or use the **⬛ Show top panel** checkable item in the right-click context menu. State persists to `config.json` (`show_panel`).
 - **Detail popup** -- usage bars, forecast, 5h/7d sparklines, 90-day heatmap, 52-week GitHub-style calendar, per-model cost breakdown, top projects, active sessions (resizable)
 - **Auto-refresh** -- every 30 seconds by default, fully configurable
 - **Resizable** -- scroll wheel on the OSD (0.6x -- 2.0x); drag the popup window edges to widen it
@@ -110,7 +111,7 @@ Gauge variants for every theme are available at `screenshots/osd-gauge-<theme>.p
 - **AI-generated weekly report** -- Claude Haiku writes a 3-4 sentence summary of your past week of usage (cached 1h; never leaks prompt text)
 - **Anomaly detection** -- flags days whose utilisation exceeds the 7/90-day baseline
 - **Cost optimisation tips** -- suggests cache-hit-rate improvements and model-mix changes
-- **Themes** -- default, catppuccin-mocha, dracula, nord, gruvbox-dark
+- **Themes** -- default, catppuccin-mocha, dracula, nord, gruvbox-dark, terminal, dashboard, hud, receipt, strip, brutalist
 - **Threshold notifications** -- native desktop notifications on crossing 75% / 90%
 - **Webhooks** -- optional POST to Slack / Discord / custom URLs on threshold, daily, or anomaly events
 - **Localhost JSON API** -- optional `http://127.0.0.1:8765/usage` for tmux / polybar / waybar integrations (prompt previews redacted at the serialization boundary)
@@ -158,7 +159,7 @@ python3 main.py
 
 | Action              | Effect |
 |---------------------|--------|
-| **Left-click**      | Open the details popup |
+| **Left-click**      | Toggle the top-panel indicator (open if closed, close if open). Falls back to opening the details popup when no tray backend is available. |
 | **Left-click drag** | Move the OSD |
 | **Right-click**     | Open context menu (Details, Refresh, Opacity, Minimize, Quit) |
 | **Scroll up / down**| Resize (0.6x -- 2.0x) |
@@ -170,10 +171,11 @@ python3 main.py
 - **OSD Opacity** -- 100% / 75% / 50% / 25%
 - **OSD View ▸** -- switch between **Bars** (default — progress bars + cost ticker) and **Gauge** (two circular rings); auto-persisted
 - **OSD Position ▸** -- snap the overlay to **Top Left / Top Right / Bottom Left / Bottom Right**, or drag it anywhere for a remembered **Custom** position; auto-persisted
-- **Theme ▸** -- pick one of the 5 palettes; the choice persists to `~/.config/claude-usage/config.json` so a restart keeps it
+- **Theme ▸** -- pick one of the 11 palettes; the choice persists to `~/.config/claude-usage/config.json` so a restart keeps it
 - **Minimize / Restore** -- collapse the OSD to a thin progress strip
 - **Show cost ticker** -- toggle the scrolling per-turn cost strip on the OSD
 - **Show news ticker** -- toggle the Anthropic/Claude news headline strip on the OSD
+- **Show top panel** -- toggle the system-tray / menu-bar indicator on or off; disabled when no tray backend is available
 - **Quit** -- exit the widget
 
 ## Configuration
@@ -209,8 +211,12 @@ cp config.json.example config.json
 | `theme` | `default` | Color theme for the OSD and popup. One of `default`, `catppuccin-mocha`, `dracula`, `nord`, `gruvbox-dark`, `terminal`, `dashboard`, `hud`, `receipt`, `strip`, `brutalist` |
 | `show_ticker` | `true` | Whether the scrolling per-turn cost ticker is painted at the bottom of the OSD. Toggle at runtime via right-click → "Show cost ticker". |
 | `show_news` | `false` | Whether the live Anthropic/Claude news headline strip is shown on the OSD. Off by default because it makes outbound calls to a 3rd-party feed. Toggle at runtime via right-click → "Show news ticker". |
+| `show_panel` | `true` | Whether the system-tray / menu-bar indicator is shown. Toggle at runtime via left-click on the OSD or right-click → "Show top panel". |
 | `osd_position` | `top-right` | Where the OSD anchors: `top-left`, `top-right`, `bottom-left`, `bottom-right`, or `custom`. Set from right-click → "OSD Position", or automatically to `custom` when you drag the overlay. |
 | `osd_x` / `osd_y` | `null` | Exact screen coordinates used only when `osd_position` is `custom`. Written automatically on drag. |
+| `osd_scale` | `1.0` | OSD zoom level (0.6–2.0). Updated automatically when you scroll the mouse wheel over the OSD. |
+| `osd_minimized` | `false` | Whether the OSD is in its collapsed thin-strip form. Toggled via right-click → "Minimize / Restore". |
+| `osd_visible` | `true` | Whether the OSD overlay is shown. Written on quit so the widget reopens in the same visible/hidden state. |
 
 Keys omitted from `config.json` fall back to built-in defaults. `claude_dir` is not included in the example file because the default is correct for most setups.
 
@@ -282,6 +288,12 @@ Right next to the `CLAUDE` title, a `⚙ N` badge shows how many Task-tool subag
 2. **macOS / Windows / other Linux DEs** — Qt's built-in `QSystemTrayIcon` puts an icon in the menu bar (macOS) or notification area (Windows). macOS can't show a live text label beside a tray icon, so the stats appear in the dropdown menu and the hover tooltip instead. No extra dependency — Qt is already bundled with PySide6.
 
 Both backends expose the same menu — **Show/Hide widget** and **Quit claude-usage** (which fully shuts the widget down, not just the tray). If neither backend is available the widget runs normally without a tray. The OSD overlay always shows the live numbers regardless.
+
+**Toggling the panel** — the indicator can be shown or hidden at any time without restarting:
+- **Left-click the OSD** — one tap shows the panel, a second tap hides it.
+- **Right-click the OSD → Show top panel** — a checkable menu item that mirrors the current state and persists the choice to `config.json` (`show_panel`).
+- On **AppIndicator** the indicator is moved to `PASSIVE` status (invisible in the top bar) rather than destroyed, so it reappears instantly on the next toggle.
+- On **Qt tray** `show()` / `hide()` is called on the underlying `QSystemTrayIcon`.
 
 ### Prompt-cache opportunities
 
